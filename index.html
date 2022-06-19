@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>"Stippling – SS22"</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="styles.css">
+    <script src="lib/d3.min.js"></script>
+    <script src="res/data.js"></script>
+    <script src="res/data_utility.js"></script>
+    <script src="code.js"></script>
+    <script src="lib/array-blur.min.js"></script>
+
+    <script type="x-shader/x-vertex" id="dots-vs">
+        attribute vec2 aPos;
+        attribute float aSize;
+        attribute vec3 aColor;
+        uniform vec2 screen;
+        varying vec2 location;
+        varying float radius;
+        varying vec3 color;
+
+        void main() {
+            color = aColor;
+            gl_Position = vec4(aPos, 0.0, 1.0);
+            location = screen * (aPos * 0.5 + 0.5);
+            radius = aSize / 2.0;
+            gl_PointSize = aSize;
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="dots-fs">
+        precision mediump float;
+        varying vec2 location;
+        varying float radius;
+        varying vec3 color;
+        uniform bool circle;
+
+        float getAlpha(float dist) { //interpolate the last view pixels for smoother dots (antialias für arme)
+            if (!circle) {
+                return 1.0;
+            }
+            float covered = dist / radius;
+            float a = 1.0;
+            if(covered > 0.95) a = 1.0 - (covered - 0.95) / 0.05;
+            return a;
+        }
+
+        void main() {
+            float dist = distance(location, gl_FragCoord.xy); //distance to original point
+            if(dist > radius && circle == true) discard;
+
+            gl_FragColor = vec4(color, getAlpha(dist));
+        }
+    </script>
+    <script type="x-shader/x-vertex" id="lines-vs">
+        attribute vec2 aPos;
+
+        void main() {
+            gl_Position = vec4(aPos.xy, 0.0, 1.0);
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="lines-fs">
+        precision mediump float;
+        uniform vec3 line_color;
+
+        void main() {
+            gl_FragColor = vec4(line_color, 1.0);
+        }
+    </script>
+</head>
+
+<body onload="init()">
+    <header>
+        <h1 class="cohesive">Stippling</h1>
+        <h3 class="cohesive">by Philip Ferenz & Alexandra Irger</h3>
+
+        <p class="italic cohesive">Based on the Paper
+            <a href="https://ieeexplore.ieee.org/document/8667696" target="_blank" rel="noopener noreferrer">
+                »Stippling of 2D Scalar Fields«
+            </a>
+            by Görtler et al.
+        </p>
+    </header>
+
+    <div class="app">
+        <div class="ui">
+            <div>
+                <h3 class="centered">Settings</h3>
+            </div>
+            <div class="centerContent">
+                <select id="dropdown_provided_files"> <!-- data_utility.js:data_mapping entries -->
+                    <option value="">...</option>
+                    <option value="population_usa">Population USA</option>
+                    <option value="population_world">Population World</option>
+                    <option value="islam">Islam</option>
+                    <option value="christianity">Christianity</option>
+                    <option value="buddhism">Buddhism</option>
+                    <option value="ufos">Ufo Sightings (USA)</option>
+                    <option value="austria_heightmap">Heightmap: Austria</option>
+                    <option value="germany_heightmap">Heightmap: Germany</option>
+                    <option value="generic_heightmap">Heightmap: Generic</option>
+                    <option value="heightmap_world">Heightmap: World</option>
+                    <option value="covid">Covid: Total Cases</option>
+                </select>
+            </div>
+            <div class="centerContent">
+                <input type="button" value="Upload" onclick="document.getElementById('iUploadImage').click();" />
+                <input type="file" style="display:none;" id="iUploadImage"/>
+            </div>
+            <div class="space"><!-- space --></div>
+            <div>
+                <h3 class="centered">Render Settings</h3>
+            </div>
+            <div>
+                <input class="reactive_range" type="range" id="iDotSize" min="0" max="300" value="100">
+                <label for="iDotSize">contrast</label>
+            </div>
+            <div>
+                <label for="iShape">shape:</label>
+                <select name="shape" id="iShape" style="margin-top: 10px">
+                    <option value="circle">Circle</option>
+                    <option value="square">Square</option>
+                </select>
+            </div>
+            <div class="space"><!-- space --></div>
+            <div>
+                <h3 class="centered">Stippling Settings</h3>
+            </div>
+            <div>
+                <input type="radio" id="iRegularStippling" name="stipplingType" value="0" checked="true" onchange="stippler.styleChanged(0)"/>
+                <label for="iRegularStippling">regular stippling</label>
+            </div>
+            <div>
+                <input type="radio" id="iRestrictedStippling" name="stipplingType" value="1" onchange="stippler.styleChanged(1)"/>
+                <label for="iRestrictedStippling">restricted stippling</label>
+            </div>
+            <div>
+                <input type="radio" id="iMachbanding" name="stipplingType" value="2" onchange="stippler.styleChanged(2)"/>
+                <label for="iMachbanding">machbanding</label>
+            </div>
+            <div>
+                <input class="reactive_range" type="range" id="slider_dot_size_min" min="1" max="1000" value="10">
+                <label for="slider_dot_size_min">dot size min</label>
+            </div>
+            <div>
+                <input class="reactive_range" type="range" id="slider_dot_size_max" min="1" max="1000" value="300">
+                <label for="slider_dot_size_max">dot size max</label>
+            </div>
+            <div>
+                <input type="checkbox" id="iColor" value="true" onchange="stippler.toggleColor()">
+                <label for="iColor">colored output</label>
+            </div>
+            <div class="centerContent">
+                <input type="button" value="Re-Stipple" onclick="UI.stippleDensity();" />
+            </div>
+        </div>
+
+        <div class="output">
+            <canvas id="d3surface"></canvas>
+        </div>
+    </div>
+</body>
+</html>
